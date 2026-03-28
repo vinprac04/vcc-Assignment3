@@ -5,14 +5,27 @@ set -e
 PROM_VERSION="2.52.0"
 NODE_EXPORTER_VERSION="1.8.1"
 
+echo "🔹 Detecting architecture..."
+ARCH=$(uname -m)
+
+if [[ "$ARCH" == "x86_64" ]]; then
+  ARCH_TYPE="amd64"
+elif [[ "$ARCH" == "aarch64" ]]; then
+  ARCH_TYPE="arm64"
+else
+  echo "❌ Unsupported architecture: $ARCH"
+  exit 1
+fi
+
+echo "✅ Architecture: $ARCH_TYPE"
+
 echo "🔹 Updating system..."
 sudo apt update -y
 sudo apt install -y wget curl tar
 
 # -----------------------------
-# 🔹 Create Users (safe)
+# 🔹 Create Users
 # -----------------------------
-echo "🔹 Creating users..."
 sudo useradd --no-create-home --shell /bin/false prometheus 2>/dev/null || true
 sudo useradd --no-create-home --shell /bin/false node_exporter 2>/dev/null || true
 
@@ -22,42 +35,34 @@ sudo useradd --no-create-home --shell /bin/false node_exporter 2>/dev/null || tr
 echo "🔹 Installing Prometheus..."
 cd /tmp
 
-if [ ! -f prometheus-${PROM_VERSION}.linux-amd64.tar.gz ]; then
-  wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/prometheus-${PROM_VERSION}.linux-amd64.tar.gz
+PROM_FILE="prometheus-${PROM_VERSION}.linux-${ARCH_TYPE}.tar.gz"
+
+if [ ! -f "$PROM_FILE" ]; then
+  wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/${PROM_FILE}
 fi
 
-rm -rf prometheus-${PROM_VERSION}.linux-amd64
-tar -xvf prometheus-${PROM_VERSION}.linux-amd64.tar.gz
-cd prometheus-${PROM_VERSION}.linux-amd64
+rm -rf prometheus-${PROM_VERSION}.linux-${ARCH_TYPE}
+tar -xvf $PROM_FILE
+cd prometheus-${PROM_VERSION}.linux-${ARCH_TYPE}
 
-# Directories
-sudo mkdir -p /etc/prometheus
-sudo mkdir -p /var/lib/prometheus
+sudo mkdir -p /etc/prometheus /var/lib/prometheus
 
-# Binaries
 sudo cp prometheus /usr/local/bin/
 sudo cp promtool /usr/local/bin/
 
-# Config (safe copy)
 sudo cp prometheus.yml /etc/prometheus/
 
-# Clean old consoles safely
-sudo rm -rf /etc/prometheus/consoles
-sudo rm -rf /etc/prometheus/console_libraries
-
+sudo rm -rf /etc/prometheus/consoles /etc/prometheus/console_libraries
 sudo cp -r consoles /etc/prometheus/
 sudo cp -r console_libraries /etc/prometheus/
 
-# Permissions
 sudo chown -R prometheus:prometheus /etc/prometheus
-sudo chown prometheus:prometheus /usr/local/bin/prometheus
-sudo chown prometheus:prometheus /usr/local/bin/promtool
+sudo chown prometheus:prometheus /usr/local/bin/prometheus /usr/local/bin/promtool
 sudo chown -R prometheus:prometheus /var/lib/prometheus
 
 # -----------------------------
 # 🔹 Prometheus Service
 # -----------------------------
-echo "🔹 Configuring Prometheus service..."
 sudo bash -c 'cat > /etc/systemd/system/prometheus.service <<EOF
 [Unit]
 Description=Prometheus Monitoring
@@ -83,21 +88,23 @@ EOF'
 echo "🔹 Installing Node Exporter..."
 cd /tmp
 
-if [ ! -f node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz ]; then
-  wget https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
+NODE_FILE="node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH_TYPE}.tar.gz"
+
+if [ ! -f "$NODE_FILE" ]; then
+  wget https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/${NODE_FILE}
 fi
 
-rm -rf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64
-tar -xvf node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64.tar.gz
-cd node_exporter-${NODE_EXPORTER_VERSION}.linux-amd64
+rm -rf node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH_TYPE}
+tar -xvf $NODE_FILE
+cd node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH_TYPE}
 
 sudo cp node_exporter /usr/local/bin/
 sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
+sudo chmod +x /usr/local/bin/node_exporter
 
 # -----------------------------
 # 🔹 Node Exporter Service
 # -----------------------------
-echo "🔹 Configuring Node Exporter service..."
 sudo bash -c 'cat > /etc/systemd/system/node_exporter.service <<EOF
 [Unit]
 Description=Node Exporter
@@ -115,9 +122,8 @@ WantedBy=multi-user.target
 EOF'
 
 # -----------------------------
-# 🔹 Update Prometheus Config
+# 🔹 Prometheus Config
 # -----------------------------
-echo "🔹 Updating Prometheus config..."
 sudo bash -c 'cat > /etc/prometheus/prometheus.yml <<EOF
 global:
   scrape_interval: 15s
@@ -144,13 +150,13 @@ sudo systemctl restart prometheus
 sudo systemctl restart node_exporter
 
 # -----------------------------
-# 🔹 Status Check
+# 🔹 Status
 # -----------------------------
-echo "🔹 Service Status:"
+echo "🔹 Checking status..."
 sudo systemctl status prometheus --no-pager
 sudo systemctl status node_exporter --no-pager
 
 echo ""
 echo "✅ Setup Complete!"
-echo "👉 Prometheus UI: http://<VM-IP>:9090"
+echo "👉 Prometheus: http://<VM-IP>:9090"
 echo "👉 Node Exporter: http://<VM-IP>:9100/metrics"
