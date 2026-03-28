@@ -17,15 +17,26 @@ else
   exit 1
 fi
 
-echo "✅ Architecture: $ARCH_TYPE"
+echo "✅ Architecture detected: $ARCH_TYPE"
+
+echo "🔹 Cleaning old files (VERY IMPORTANT)..."
+sudo systemctl stop prometheus node_exporter 2>/dev/null || true
+
+sudo rm -f /usr/local/bin/prometheus
+sudo rm -f /usr/local/bin/promtool
+sudo rm -f /usr/local/bin/node_exporter
+
+sudo rm -rf /etc/prometheus
+sudo rm -rf /var/lib/prometheus
+
+rm -rf /tmp/prometheus*
+rm -rf /tmp/node_exporter*
 
 echo "🔹 Updating system..."
 sudo apt update -y
 sudo apt install -y wget curl tar
 
-# -----------------------------
-# 🔹 Create Users
-# -----------------------------
+echo "🔹 Creating users..."
 sudo useradd --no-create-home --shell /bin/false prometheus 2>/dev/null || true
 sudo useradd --no-create-home --shell /bin/false node_exporter 2>/dev/null || true
 
@@ -37,11 +48,8 @@ cd /tmp
 
 PROM_FILE="prometheus-${PROM_VERSION}.linux-${ARCH_TYPE}.tar.gz"
 
-if [ ! -f "$PROM_FILE" ]; then
-  wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/${PROM_FILE}
-fi
+wget https://github.com/prometheus/prometheus/releases/download/v${PROM_VERSION}/${PROM_FILE}
 
-rm -rf prometheus-${PROM_VERSION}.linux-${ARCH_TYPE}
 tar -xvf $PROM_FILE
 cd prometheus-${PROM_VERSION}.linux-${ARCH_TYPE}
 
@@ -51,8 +59,6 @@ sudo cp prometheus /usr/local/bin/
 sudo cp promtool /usr/local/bin/
 
 sudo cp prometheus.yml /etc/prometheus/
-
-sudo rm -rf /etc/prometheus/consoles /etc/prometheus/console_libraries
 sudo cp -r consoles /etc/prometheus/
 sudo cp -r console_libraries /etc/prometheus/
 
@@ -63,6 +69,7 @@ sudo chown -R prometheus:prometheus /var/lib/prometheus
 # -----------------------------
 # 🔹 Prometheus Service
 # -----------------------------
+echo "🔹 Configuring Prometheus service..."
 sudo bash -c 'cat > /etc/systemd/system/prometheus.service <<EOF
 [Unit]
 Description=Prometheus Monitoring
@@ -90,21 +97,19 @@ cd /tmp
 
 NODE_FILE="node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH_TYPE}.tar.gz"
 
-if [ ! -f "$NODE_FILE" ]; then
-  wget https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/${NODE_FILE}
-fi
+wget https://github.com/prometheus/node_exporter/releases/download/v${NODE_EXPORTER_VERSION}/${NODE_FILE}
 
-rm -rf node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH_TYPE}
 tar -xvf $NODE_FILE
 cd node_exporter-${NODE_EXPORTER_VERSION}.linux-${ARCH_TYPE}
 
 sudo cp node_exporter /usr/local/bin/
-sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
 sudo chmod +x /usr/local/bin/node_exporter
+sudo chown node_exporter:node_exporter /usr/local/bin/node_exporter
 
 # -----------------------------
 # 🔹 Node Exporter Service
 # -----------------------------
+echo "🔹 Configuring Node Exporter service..."
 sudo bash -c 'cat > /etc/systemd/system/node_exporter.service <<EOF
 [Unit]
 Description=Node Exporter
@@ -124,6 +129,7 @@ EOF'
 # -----------------------------
 # 🔹 Prometheus Config
 # -----------------------------
+echo "🔹 Setting Prometheus config..."
 sudo bash -c 'cat > /etc/prometheus/prometheus.yml <<EOF
 global:
   scrape_interval: 15s
@@ -146,17 +152,14 @@ sudo systemctl daemon-reexec
 sudo systemctl daemon-reload
 
 sudo systemctl enable prometheus node_exporter
-sudo systemctl restart prometheus
-sudo systemctl restart node_exporter
+sudo systemctl start prometheus
+sudo systemctl start node_exporter
 
-# -----------------------------
-# 🔹 Status
-# -----------------------------
-echo "🔹 Checking status..."
+echo "🔹 Final status..."
 sudo systemctl status prometheus --no-pager
 sudo systemctl status node_exporter --no-pager
 
 echo ""
-echo "✅ Setup Complete!"
+echo "🎉 SUCCESS!"
 echo "👉 Prometheus: http://<VM-IP>:9090"
 echo "👉 Node Exporter: http://<VM-IP>:9100/metrics"
