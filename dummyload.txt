@@ -1,3 +1,10 @@
 #Dummy Load
 
-cat /dev/zero > /dev/null
+## Install Stress Util package
+sudo apt install stress -y
+
+# Command to produce stress on VM node cpu
+stress --cpu $(nproc)
+
+#Command to stop the stress 
+sudo killall stress
