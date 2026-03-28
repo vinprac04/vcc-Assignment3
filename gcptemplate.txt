@@ -1,0 +1,7 @@
+#Gcp Template
+gcloud compute instance-templates create gcp-worker-template \
+    --machine-type=e2-micro \
+    --image-family=debian-12 \
+    --image-project=debian-cloud \
+    --network=default \
+    --tags=http-server,allow-ssh
